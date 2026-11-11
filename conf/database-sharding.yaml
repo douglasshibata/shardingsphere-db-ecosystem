@@ -1,0 +1,132 @@
+# Apache ShardingSphere-Proxy Database Rule Configuration
+# --------------------------------------------------------
+# Configura o banco lógico 'sharding_db' acoplando os Data Nodes físicos (shards),
+# regras de Read-Write Splitting, regras de Sharding (Módulo e Snowflake),
+# e regras de Criptografia Transparente (Compliance LGPD/GDPR via AES).
+
+databaseName: sharding_db
+
+# 1. Definição física de conexões dos Data Sources em todos os fragmentos
+dataSources:
+  ds_0_p:
+    dataSourceClassName: com.zaxxer.hikari.HikariDataSource
+    driverClassName: org.postgresql.Driver
+    jdbcUrl: jdbc:postgresql://ds_0_primary:5432/ds_0
+    username: sharding_user
+    password: SecretPassword123!
+    connectionTimeoutMilliseconds: 30000
+    idleTimeoutMilliseconds: 60000
+    maxLifetimeMilliseconds: 1800000
+    maxPoolSize: 20
+    minPoolSize: 5
+
+  ds_0_r:
+    dataSourceClassName: com.zaxxer.hikari.HikariDataSource
+    driverClassName: org.postgresql.Driver
+    jdbcUrl: jdbc:postgresql://ds_0_replica:5432/ds_0
+    username: sharding_user
+    password: SecretPassword123!
+    connectionTimeoutMilliseconds: 30000
+    idleTimeoutMilliseconds: 60000
+    maxLifetimeMilliseconds: 1800000
+    maxPoolSize: 20
+    minPoolSize: 5
+
+  ds_1_p:
+    dataSourceClassName: com.zaxxer.hikari.HikariDataSource
+    driverClassName: org.postgresql.Driver
+    jdbcUrl: jdbc:postgresql://ds_1_primary:5432/ds_1
+    username: sharding_user
+    password: SecretPassword123!
+    connectionTimeoutMilliseconds: 30000
+    idleTimeoutMilliseconds: 60000
+    maxLifetimeMilliseconds: 1800000
+    maxPoolSize: 20
+    minPoolSize: 5
+
+  ds_1_r:
+    dataSourceClassName: com.zaxxer.hikari.HikariDataSource
+    driverClassName: org.postgresql.Driver
+    jdbcUrl: jdbc:postgresql://ds_1_replica:5432/ds_1
+    username: sharding_user
+    password: SecretPassword123!
+    connectionTimeoutMilliseconds: 30000
+    idleTimeoutMilliseconds: 60000
+    maxLifetimeMilliseconds: 1800000
+    maxPoolSize: 20
+    minPoolSize: 5
+
+# 2. Especificação das Regras (ShardingSphere unifica regras em um pipeline ordenado)
+rules:
+  # A) Regra de Separação de Leitura e Escrita (Read-Write Splitting)
+  - !READWRITE_SPLITTING
+    dataSourceGroups:
+      readwrite_ds_0:
+        writeDataSourceName: ds_0_p
+        readDataSourceNames:
+          - ds_0_r
+        loadBalancerName: round_robin_lb
+      readwrite_ds_1:
+        writeDataSourceName: ds_1_p
+        readDataSourceNames:
+          - ds_1_r
+        loadBalancerName: round_robin_lb
+    loadBalancers:
+      round_robin_lb:
+        type: ROUND_ROBIN
+
+  # B) Regra de Particionamento Horizontal (Data Sharding)
+  - !SHARDING
+    tables:
+      # Tabela lógica "orders" mapeada sobre os grupos virtuais de leitura/escrita
+      orders:
+        actualDataNodes: readwrite_ds_${0..1}.orders_${0..1}
+        databaseStrategy:
+          standard:
+            shardingColumn: user_id
+            shardingAlgorithmName: database_inline_mod
+        tableStrategy:
+          standard:
+            shardingColumn: order_id
+            shardingAlgorithmName: table_inline_mod
+        keyGenerateStrategy:
+          column: order_id
+          keyGeneratorName: snowflake_id_generator
+
+    # Definição dos algoritmos de Sharding
+    shardingAlgorithms:
+      database_inline_mod:
+        type: INLINE
+        props:
+          algorithm-expression: readwrite_ds_${user_id % 2}
+      table_inline_mod:
+        type: INLINE
+        props:
+          algorithm-expression: orders_${order_id % 2}
+
+    # Gerador de ID distribuído Snowflake integrado
+    keyGenerators:
+      snowflake_id_generator:
+        type: SNOWFLAKE
+        props:
+          worker-id: 1
+
+  # C) Regra de Criptografia Transparente (Data Encryption - LGPD Compliance)
+  - !ENCRYPT
+    tables:
+      orders:
+        columns:
+          # Para a aplicação o campo chama 'cpf', mas fisicamente no banco armazena 'cpf_cipher' criptografado
+          cpf:
+            cipher:
+              name: cpf_cipher
+              encryptorName: aes_encryptor
+          credit_card:
+            cipher:
+              name: credit_card_cipher
+              encryptorName: aes_encryptor
+    encryptors:
+      aes_encryptor:
+        type: AES
+        props:
+          aes-key-value: SShardingSphereKey123! # Chave simétrica usada para criptografia bidirecional

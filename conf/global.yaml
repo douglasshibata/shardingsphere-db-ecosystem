@@ -1,0 +1,41 @@
+# Apache ShardingSphere-Proxy Global Configuration File
+# ----------------------------------------------------
+# Configura as propriedades do cluster, centro de governança/registro,
+# autenticação dos usuários, e os parâmetros globais de transação e performance.
+
+mode:
+  type: Cluster
+  repository:
+    type: ZooKeeper
+    props:
+      namespace: shardingsphere_governance
+      server-lists: zookeeper:2181
+      retryIntervalMilliseconds: 1000
+      maxRetries: 5
+      timeToLiveSeconds: 60
+  overwrite: true
+
+authority:
+  users:
+    - user: root@%
+      password: RootSecretPassword!
+      authorizedSchemas: sharding_db
+    - user: ss_app@%
+      password: AppSecretPassword123!
+      authorizedSchemas: sharding_db
+  providers:
+    database:
+      type: ALL_PERMITTED
+
+# Configurações globais e transações distribuídas (consistência forte via XA / Narayana)
+transaction:
+  defaultType: XA
+  providerType: Narayana
+
+props:
+  sql-show: true                             # Exibe os comandos SQL lógicos vs físicos nos logs do proxy
+  executor-size: 16                          # Tamanho do pool de execução interna de queries do ShardingSphere
+  proxy-frontend-database-protocol-type: PostgreSQL
+  proxy-backend-query-fetch-size: 500
+  proxy-frontend-executor-size: 8
+  max-connections-size-per-query: 3

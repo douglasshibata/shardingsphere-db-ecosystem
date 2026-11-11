@@ -1,0 +1,151 @@
+services:
+  # Governance & Metadata Registry Center
+  zookeeper:
+    image: zookeeper:3.9.1
+    container_name: zookeeper_governance
+    restart: always
+    ports:
+      - "2181:2181"
+    environment:
+      ZOO_MY_ID: 1
+      ZOO_PORT: 2181
+    healthcheck:
+      test: ["CMD", "bash", "-c", "echo ruok | nc localhost 2181 | grep imok"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+
+  # Shard 0 - Primary Node
+  ds_0_primary:
+    image: postgres:15-alpine
+    container_name: ds_0_primary
+    restart: always
+    ports:
+      - "5433:5432"
+    environment:
+      POSTGRES_DB: ds_0
+      POSTGRES_USER: sharding_user
+      POSTGRES_PASSWORD: SecretPassword123!
+    volumes:
+      - ./sql/init-ds_0.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sharding_user -d ds_0"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+
+  # Shard 0 - Read-Only Replica Node
+  ds_0_replica:
+    image: postgres:15-alpine
+    container_name: ds_0_replica
+    restart: always
+    ports:
+      - "5434:5432"
+    environment:
+      POSTGRES_DB: ds_0
+      POSTGRES_USER: sharding_user
+      POSTGRES_PASSWORD: SecretPassword123!
+    volumes:
+      - ./sql/init-ds_0.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sharding_user -d ds_0"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+
+  # Shard 1 - Primary Node
+  ds_1_primary:
+    image: postgres:15-alpine
+    container_name: ds_1_primary
+    restart: always
+    ports:
+      - "5435:5432"
+    environment:
+      POSTGRES_DB: ds_1
+      POSTGRES_USER: sharding_user
+      POSTGRES_PASSWORD: SecretPassword123!
+    volumes:
+      - ./sql/init-ds_1.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sharding_user -d ds_1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+
+  # Shard 1 - Read-Only Replica Node
+  ds_1_replica:
+    image: postgres:15-alpine
+    container_name: ds_1_replica
+    restart: always
+    ports:
+      - "5436:5432"
+    environment:
+      POSTGRES_DB: ds_1
+      POSTGRES_USER: sharding_user
+      POSTGRES_PASSWORD: SecretPassword123!
+    volumes:
+      - ./sql/init-ds_1.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sharding_user -d ds_1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+
+  # Apache ShardingSphere-Proxy Engine
+  shardingsphere-proxy:
+    image: apache/shardingsphere-proxy:5.5.0
+    container_name: shardingsphere_proxy
+    restart: always
+    ports:
+      - "5432:5432" # Expõe o Proxy na porta padrão do PostgreSQL, permitindo transparência absoluta
+    environment:
+      PORT: 5432
+    volumes:
+      - ./conf/global.yaml:/opt/shardingsphere-proxy/conf/global.yaml
+      - ./conf/database-sharding.yaml:/opt/shardingsphere-proxy/conf/database-sharding.yaml
+    depends_on:
+      zookeeper:
+        condition: service_healthy
+      ds_0_primary:
+        condition: service_healthy
+      ds_0_replica:
+        condition: service_healthy
+      ds_1_primary:
+        condition: service_healthy
+      ds_1_replica:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z localhost 5432"]
+      interval: 15s
+      timeout: 10s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          cpus: '1.5'
+          memory: 2G
